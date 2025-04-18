@@ -21,7 +21,6 @@ const allowedRoles = [
   "Job Controller",
   "Bay Technician",
   "Final Inspection Technician",
-  "Diagnosis Engineer",
   "Washing",
   "Parts Team",
 ];
@@ -40,41 +39,55 @@ const UserSchema = new mongoose.Schema(
 
 const User = mongoose.models.User || mongoose.model("User", UserSchema);
 
-// JWT Middleware
 const authMiddleware = async (req, res, next) => {
-    const token = req.header("Authorization")?.replace("Bearer ", "");
-    if (!token) {
-      console.log("❌ No Token Provided");
-      return res.status(401).json({ message: "Access Denied. No token provided." });
-    }
-  
-    try {
-      console.log("🔹 Verifying Token...");
-      const verified = jwt.verify(token, process.env.JWT_SECRET);
-      console.log("✅ Token Verified:", verified);
-  
-      const user = await User.findById(verified.userId);
-      if (!user) {
-        console.log("❌ User Not Found in Database");
-        return res.status(401).json({ message: "User not found." });
-      }
-  
-      console.log("✅ Authenticated User:", {
-        id: user._id,
-        role: user.role,
-        name: user.name
-      });
-  
-      req.user = user; // Attach full user object
-      next();
-    } catch (error) {
-      console.error("❌ Token Verification Failed:", error);
-      res.status(400).json({ message: "Invalid Token" });
-    }
-  };
-  
+  const rawHeader = req.header("Authorization");
+  console.log("📥 Raw Authorization Header:", rawHeader);
 
-// ✅ Register User (No Admin Approval Required)
+  const token = rawHeader?.replace("Bearer ", "");
+  if (!token) {
+    console.log("❌ No Token Provided");
+    return res.status(401).json({ message: "Access Denied. No token provided." });
+  }
+
+  try {
+    console.log("🔹 Extracted Token:", token);
+
+    // Optional: check if it has the correct JWT structure
+    if (!token.includes('.') || token.split('.').length !== 3) {
+      console.log("⚠️ Token does not look like a valid JWT (missing parts)");
+    }
+
+    console.log("🔹 Verifying Token...");
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("✅ Token Verified:", verified);
+
+    const user = await User.findById(verified.userId);
+    if (!user) {
+      console.log("❌ User Not Found in Database for ID:", verified.userId);
+      return res.status(401).json({ message: "User not found." });
+    }
+
+    console.log("✅ Authenticated User:", {
+      id: user._id,
+      role: user.role,
+      name: user.name
+    });
+
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error("❌ Token Verification Failed:", error.message);
+
+    // Provide more detailed error response
+    return res.status(400).json({ 
+      message: "Invalid Token", 
+      error: error.message 
+    });
+  }
+};
+
+
+// ✅ Register User (No approval required)
 router.post("/register", async (req, res) => {
   try {
     const { name, mobile, email, password, role } = req.body;
@@ -100,7 +113,7 @@ router.post("/register", async (req, res) => {
       }
     }
 
-    // ✅ Create user without admin approval
+    // Create user
     const newUser = new User({
       name,
       mobile,
@@ -183,6 +196,7 @@ router.get("/users", authMiddleware, async (req, res) => {
       mobile: user.mobile,
       email: user.email,
       role: user.role,
+      createdAt: user.createdAt
     }));
 
     res.json({ success: true, users: sanitizedUsers });
@@ -216,7 +230,6 @@ router.get("/profile", authMiddleware, async (req, res) => {
   }
 });
 
-
 // ✅ Delete User (Admin Only)
 router.delete("/users/:userId", authMiddleware, async (req, res) => {
   try {
@@ -234,43 +247,6 @@ router.delete("/users/:userId", authMiddleware, async (req, res) => {
     res.json({ success: true, message: "User deleted successfully" });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ success: false, message: "Server error", error });
-  }
-});
-
-// ✅ Admin: Add User
-router.post("/admin/add-user", authMiddleware, async (req, res) => {
-  try {
-    const { name, mobile, email, password, role } = req.body;
-
-    if (req.user.role !== "Admin") {
-      return res.status(403).json({ success: false, message: "Access Denied. Admins only." });
-    }
-
-    if (!name || !mobile || !password || !allowedRoles.includes(role)) {
-      return res.status(400).json({ success: false, message: "Invalid input data." });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ mobile });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: "User with this mobile already exists." });
-    }
-
-    // Create new user
-    const newUser = new User({
-      name,
-      mobile,
-      email: email?.trim() || null,
-      password,
-      role,
-    });
-
-    await newUser.save();
-
-    res.status(201).json({ success: true, message: "User added successfully.", user: newUser });
-  } catch (error) {
-    console.error("Admin Add User Error:", error);
     res.status(500).json({ success: false, message: "Server error", error });
   }
 });

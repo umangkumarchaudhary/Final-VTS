@@ -1,0 +1,228 @@
+/* Base Styles */
+.vehicle-status-container {
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 1rem;
+    font-family: 'Segoe UI', 'Roboto', sans-serif;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  
+  /* Header Section */
+  .header-section {
+    text-align: center;
+    margin-bottom: 1.5rem;
+  }
+  
+  .app-header {
+    font-size: 2rem;
+    color: #00c3ff;
+    font-weight: 300;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+  }
+  
+  .vehicle-number {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #ffffff;
+  }
+  
+  /* Content Grid Layout */
+  .content-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1.5rem;
+  }
+  
+  /* Advisor Section */
+  .advisor-container {
+    background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+    border-radius: 10px;
+    padding: 1.2rem;
+    border: 1px solid #2a2a2a;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  }
+  
+  .advisor-container h3 {
+    color: #00c3ff;
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .advisor-details {
+    margin-top: 1rem;
+  }
+  
+  .advisor-details p {
+    margin: 0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  /* Compact Timeline */
+  .compact-timeline {
+    background: linear-gradient(145deg, #1a1a1a, #0d0d0d);
+    border-radius: 10px;
+    padding: 1.2rem;
+    border: 1px solid #2a2a2a;
+  }
+  
+  .compact-timeline h3 {
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #00c3ff;
+  }
+  
+  .stages-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+    margin-top: 1rem;
+  }
+  
+  .stage-card {
+    background: #141414;
+    border-radius: 8px;
+    padding: 0.8rem;
+    border: 1px solid #2a2a2a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .stage-card:hover {
+    border-color: #00c3ff;
+  }
+  
+  .stage-card.expanded {
+    border-color: #00c3ff;
+    box-shadow: 0 0 15px rgba(0, 195, 255, 0.1);
+  }
+  
+  .stage-header {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+  }
+  
+  .stage-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: #ffffff;
+    flex-grow: 1;
+  }
+  
+  .stage-time {
+    color: #b0b0b0;
+    font-size: 0.8rem;
+    margin: 0.2rem 0 0 0;
+    font-family: 'Courier New', monospace;
+  }
+  
+  .status-badge {
+    font-size: 0.7rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+  
+  .status-badge.pending {
+    background: rgba(255, 165, 0, 0.1);
+    color: #ffa500;
+    border: 1px solid #ffa500;
+  }
+  
+  .status-badge.active {
+    background: rgba(0, 195, 255, 0.1);
+    color: #00c3ff;
+    border: 1px solid #00c3ff;
+    animation: pulse 2s infinite;
+  }
+  
+  .status-badge.completed {
+    background: rgba(0, 255, 0, 0.1);
+    color: #00ff00;
+    border: 1px solid #00ff00;
+  }
+  
+  .stage-details {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid #2a2a2a;
+    font-size: 0.9rem;
+  }
+  
+  .stage-details p {
+    margin: 0.4rem 0;
+  }
+  
+  .icon {
+    color: #00c3ff;
+    font-size: 1rem;
+  }
+  
+  .stage-icon {
+    color: #00c3ff;
+    font-size: 1.2rem;
+  }
+  
+  /* Animations */
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(0, 195, 255, 0.4); }
+    70% { box-shadow: 0 0 0 8px rgba(0, 195, 255, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 195, 255, 0); }
+  }
+  
+  /* Error and Loading States */
+  .error-box, .loading-box {
+    background: rgba(255, 50, 50, 0.1);
+    border: 1px solid rgba(255, 50, 50, 0.3);
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    max-width: 600px;
+    margin: 2rem auto;
+    color: #ff6666;
+  }
+  
+  .loading-box {
+    background: rgba(0, 195, 255, 0.1);
+    border: 1px solid rgba(0, 195, 255, 0.3);
+    color: #00c3ff;
+  }
+  
+  /* Responsive Design */
+  @media (max-width: 768px) {
+    .content-grid {
+      grid-template-columns: 1fr;
+    }
+    
+    .app-header {
+      font-size: 1.8rem;
+    }
+    
+    .vehicle-number {
+      font-size: 1.3rem;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .vehicle-status-container {
+      padding: 0.8rem;
+    }
+    
+    .stage-header {
+      flex-wrap: wrap;
+    }
+    
+    .status-badge {
+      margin-left: auto;
+    }
+  }

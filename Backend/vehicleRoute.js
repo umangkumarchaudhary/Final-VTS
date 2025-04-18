@@ -2,8 +2,10 @@ const express = require("express");
 const router = express.Router();
 const Vehicle = require("./models/vehicle");
 const {authMiddleware} = require("./userAuth");
+const {User} = require("./userAuth")
+const crypto = require('crypto');
 
-// ✅ 1️⃣ POST: Handle Vehicle Check-in and Stage Updates
+
 
 router.post("/vehicle-check", authMiddleware, async (req, res) => {
   console.log("🔹 Incoming Request Data:", req.body);
@@ -41,41 +43,106 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
 
     const formattedVehicleNumber = vehicleNumber.trim().toUpperCase();
     
-    // Find the most recent active vehicle entry
+    // Find the most recent vehicle entry (regardless of exitTime)
     let vehicle = await Vehicle.findOne({
-      vehicleNumber: formattedVehicleNumber,
-      exitTime: null
+      vehicleNumber: formattedVehicleNumber
     }).sort({ entryTime: -1 });
 
-    // SECURITY GUARD SPECIFIC LOGIC
-    if (role === "Security Guard") {
-      // ENTRY LOGIC
-      if (eventType === "Start") {
-        const twelveHoursAgo = new Date();
-        twelveHoursAgo.setHours(twelveHoursAgo.getHours() - 12);
-
-        // Check for recent entries
-        const recentVehicle = await Vehicle.findOne({
-          vehicleNumber: formattedVehicleNumber,
-          entryTime: { $gte: twelveHoursAgo },
-          exitTime: null,
-        });
-
-        if (recentVehicle) {
-          // Close all previous open entries
-          await Vehicle.updateMany(
-            { vehicleNumber: formattedVehicleNumber, exitTime: null },
-            { $set: { exitTime: new Date() } }
-          );
-          console.log(`🔹 Closed previous open entries for ${formattedVehicleNumber}`);
-        }
-
-        // Create new entry
-        const newVehicle = new Vehicle({
+    // SERVICE ADVISOR - N-1 CALLING SPECIFIC LOGIC
+    if (role === "Service Advisor" && stageName === "N-1 Calling" && eventType === "Start") {
+      // If no vehicle exists at all, create one
+      if (!vehicle) {
+        vehicle = new Vehicle({
           vehicleNumber: formattedVehicleNumber,
           entryTime: new Date(),
           exitTime: null,
-          stages: [{
+          stages: [],
+        });
+      }
+      // If vehicle exists but has exitTime, create new entry
+      else if (vehicle.exitTime) {
+        vehicle = new Vehicle({
+          vehicleNumber: formattedVehicleNumber,
+          entryTime: new Date(),
+          exitTime: null,
+          stages: [],
+        });
+      }
+
+      const alreadyCalled = vehicle.stages.some(stage =>
+        stage.stageName === "N-1 Calling" && stage.eventType === "Start"
+      );
+
+      if (alreadyCalled) {
+        return res.status(400).json({
+          success: false,
+          message: "N-1 Calling has already been started for this vehicle."
+        });
+      }
+
+      if (!vehicle.trackingToken) {
+        vehicle.trackingToken = crypto.randomBytes(16).toString('hex');
+        console.log("Generated Token: ", vehicle.trackingToken);
+      }
+
+      const newStage = {
+        stageName,
+        role,
+        eventType,
+        timestamp: new Date(),
+        performedBy: {
+          userId: req.user._id,
+          userName: req.user.name
+        }
+      };
+
+      vehicle.stages.push(newStage);
+      await vehicle.save();
+
+      const vehicleLink = `https://SilverStar.com/track/${vehicle.trackingToken}`;
+      return res.status(200).json({
+        success: true,
+        message: "N-1 Calling recorded successfully",
+        trackingLink: vehicleLink,
+        vehicle
+      });
+    }
+
+    // SECURITY GUARD SPECIFIC LOGIC - MODIFIED TO USE EXISTING DOCUMENT
+    if (role === "Security Guard") {
+      // Find the most recent vehicle with exitTime: null
+      vehicle = await Vehicle.findOne({
+        vehicleNumber: formattedVehicleNumber,
+        exitTime: null
+      }).sort({ entryTime: -1 });
+
+      // ENTRY LOGIC
+      if (eventType === "Start") {
+        // If no active vehicle exists, create one
+        if (!vehicle) {
+          vehicle = new Vehicle({
+            vehicleNumber: formattedVehicleNumber,
+            entryTime: new Date(),
+            exitTime: null,
+            stages: [{
+              stageName,
+              role,
+              eventType,
+              timestamp: new Date(),
+              performedBy: {
+                userId: req.user._id,
+                userName: req.user.name
+              },
+              inKM: inKM || null,
+              outKM: null,
+              inDriver: inDriver || null,
+              outDriver: null
+            }]
+          });
+        } 
+        // If active vehicle exists, add to it
+        else {
+          vehicle.stages.push({
             stageName,
             role,
             eventType,
@@ -88,14 +155,14 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
             outKM: null,
             inDriver: inDriver || null,
             outDriver: null
-          }]
-        });
+          });
+        }
 
-        await newVehicle.save();
+        await vehicle.save();
         return res.status(201).json({
           success: true,
-          message: "New vehicle entry recorded",
-          vehicle: newVehicle
+          message: "Vehicle entry recorded",
+          vehicle
         });
       }
 
@@ -108,7 +175,6 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
           });
         }
 
-        // Update the vehicle exit
         vehicle.exitTime = new Date();
         vehicle.stages.push({
           stageName,
@@ -173,16 +239,16 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
       const bayWorkStages = vehicle.stages.filter(stage =>
         stage.stageName.startsWith("Bay Work")
       );
-    
+
       const bayNum = isNaN(bayNumber) ? bayNumber : Number(bayNumber);
-    
+
       if (eventType === "Start") {
         const bayWorkCount = bayWorkStages.filter(stage =>
           stage.workType === workType &&
           stage.bayNumber == bayNum &&
           stage.eventType === "Start"
         ).length;
-    
+
         const unfinishedSameBayWork = bayWorkStages.find(stage =>
           stage.workType === workType &&
           stage.bayNumber == bayNum &&
@@ -194,14 +260,14 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
             s.timestamp > stage.timestamp
           )
         );
-    
+
         if (unfinishedSameBayWork) {
           return res.status(400).json({
             success: false,
             message: `Please end the previous ${workType} work in bay ${bayNum} first`
           });
         }
-    
+
         const unfinishedAnyWork = bayWorkStages.find(stage =>
           stage.eventType === "Start" &&
           !bayWorkStages.some(s =>
@@ -209,7 +275,7 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
             s.timestamp > stage.timestamp
           )
         );
-    
+
         if (unfinishedAnyWork) {
           vehicle.stages.push({
             stageName: unfinishedAnyWork.stageName,
@@ -226,10 +292,10 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
           });
           console.log(`⚠️ Auto-closed previous unfinished Bay Work: ${unfinishedAnyWork.stageName}`);
         }
-    
+
         stageName = `Bay Work: ${workType}: ${bayWorkCount + 1}`;
       }
-    
+
       if (["Pause", "Resume", "End"].includes(eventType)) {
         const lastStart = bayWorkStages
           .filter(stage =>
@@ -239,66 +305,66 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
             stage.stageName.startsWith("Bay Work")
           )
           .sort((a, b) => b.timestamp - a.timestamp)[0];
-    
+
         if (!lastStart) {
           return res.status(400).json({
             success: false,
             message: `Cannot ${eventType.toLowerCase()} - no active ${workType} work in bay ${bayNum}`
           });
         }
-    
+
         const hasEnded = bayWorkStages.some(stage =>
           stage.workType === workType &&
           stage.bayNumber == bayNum &&
           stage.eventType === "End" &&
           stage.timestamp > lastStart.timestamp
         );
-    
+
         if (hasEnded) {
           return res.status(400).json({
             success: false,
             message: `Cannot ${eventType.toLowerCase()} - work has already ended`
           });
         }
-    
+
         const pauses = bayWorkStages
           .filter(stage =>
             stage.workType === workType &&
             stage.bayNumber == bayNum &&
             stage.eventType === "Pause" &&
             stage.timestamp > lastStart.timestamp
-          )
-          .sort((a, b) => b.timestamp - a.timestamp);
-    
+          );
+
         const resumes = bayWorkStages
           .filter(stage =>
             stage.workType === workType &&
             stage.bayNumber == bayNum &&
             stage.eventType === "Resume" &&
             stage.timestamp > lastStart.timestamp
-          )
-          .sort((a, b) => b.timestamp - a.timestamp);
-    
+          );
+
         if (eventType === "Pause" && pauses.length > resumes.length) {
           return res.status(400).json({
             success: false,
             message: "Work is already paused"
           });
         }
-    
+
         if (eventType === "Resume" && (pauses.length === 0 || resumes.length >= pauses.length)) {
           return res.status(400).json({
             success: false,
             message: "Work is not paused"
           });
         }
-    
+
         if (eventType === "End" && pauses.length > resumes.length) {
           return res.status(400).json({
             success: false,
             message: "Cannot end while work is paused - please resume first"
           });
         }
+
+        stageName = lastStart.stageName;
       }
     }
 
@@ -371,39 +437,27 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
       }
     }
 
-    // JOB CONTROLLER LOGIC - UPDATED WITH ALL THREE STAGES
+    // JOB CONTROLLER LOGIC
     if (role === "Job Controller") {
-      // 1. Job Card Received + Bay Allocation
       if (stageName === "Job Card Received + Bay Allocation" && eventType === "Start") {
         const lastJobCardReceived = vehicle.stages
           .filter(stage => stage.stageName.startsWith("Job Card Received + Bay Allocation") && stage.eventType === "Start")
           .sort((a, b) => b.timestamp - a.timestamp)[0];
         
-        // 30-minute cooldown check
-        if (lastJobCardReceived && (new Date() - new Date(lastJobCardReceived.timestamp)) / 60000 < 30) {
+        if (lastJobCardReceived && (new Date() - new Date(lastJobCardReceived.timestamp)) / 60000 < 10) {
           return res.status(400).json({
             success: false,
-            message: "Job Card Received + Bay Allocation cannot be restarted within 30 minutes."
+            message: "Job Card Received + Bay Allocation cannot be restarted within 10 minutes."
           });
         }
 
-        // Sequential numbering
         const jobCardCount = vehicle.stages.filter(stage => 
           stage.stageName.startsWith("Job Card Received + Bay Allocation") && stage.eventType === "Start"
         ).length;
         stageName = `Job Card Received + Bay Allocation ${jobCardCount + 1}`;
       }
 
-      // 2. Job Card Received (by Technician) - After Final Completion of work
       if (stageName === "Job Card Received (by Technician)" && eventType === "Start") {
-        // Check if work completion exists
-        const hasWorkCompleted = vehicle.stages.some(stage => 
-          stage.stageName === "Job Card Received (by Technician)" && stage.eventType === "Start"
-        );
-        
-        
-
-        // Check if already received
         const alreadyReceived = vehicle.stages.some(stage => 
           stage.stageName === "Job Card Received (by Technician)" && stage.eventType === "Start"
         );
@@ -416,14 +470,7 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
         }
       }
 
-      // 3. Job Card Received (by FI) - After Completion of Final Inspection
       if (stageName === "Job Card Received (by FI)" && eventType === "Start") {
-        // Check if final inspection is completed
-        const hasFinalInspection = vehicle.stages.some(stage => 
-          stage.stageName === "Job Card Received (by FI)" && stage.eventType === "End"
-        );
-
-        // Check if already received
         const alreadyReceived = vehicle.stages.some(stage => 
           stage.stageName === "Job Card Received (by FI)" && stage.eventType === "Start"
         );
@@ -456,7 +503,7 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
         }
       }
 
-      if (lastUnendedStart && (new Date() - new Date(lastUnendedStart.timestamp)) / 60000 < 10) {
+      if (lastUnendedStart && (new Date() - new Date(lastUnendedStart.timestamp)) / 60000 < 1) {
         return res.status(400).json({
           success: false,
           message: `${stageName} cannot be ended within 10 minutes of starting.`
@@ -500,7 +547,6 @@ router.post("/vehicle-check", authMiddleware, async (req, res) => {
     });
   }
 });
-
 
 // GET /api/bay-work-status
 router.get("/bay-work-status", authMiddleware, async (req, res) => {
@@ -663,5 +709,42 @@ router.get("/user-vehicles", authMiddleware, async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error });
   }
 });
+
+router.get('/public/track/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+
+  const vehicle = await Vehicle.findOne({ trackingToken: trackingId });
+
+  if (!vehicle) {
+    return res.status(404).json({ message: 'Vehicle not found' });
+  }
+
+  const n1CallingStage = vehicle.stages.find(
+    stage => stage.stageName === "N-1 Calling" && stage.eventType === "Start"
+  );
+
+  if (n1CallingStage) {
+    const serviceAdvisor = await User.findById(n1CallingStage.performedBy.userId);
+
+    const dedicatedAdvisorDetails = {
+      name: serviceAdvisor?.name || null,
+      mobile: serviceAdvisor?.mobile || null,
+      email: serviceAdvisor?.email || null,
+    };
+
+    return res.status(200).json({
+      success: true,
+      vehicleNumber: vehicle.vehicleNumber,
+      stages: vehicle.stages,
+      dedicatedAdvisor: dedicatedAdvisorDetails,
+    });
+  }
+
+  return res.status(404).json({ message: 'N-1 Calling stage not found' });
+});
+
+
+
+
 
 module.exports = router;
